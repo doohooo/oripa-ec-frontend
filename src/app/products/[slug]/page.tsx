@@ -75,19 +75,26 @@ export default async function ProductDetailPage({ params }: PageProps) {
             )}
 
             <div className="pt-4">
-              <button
-                type="button"
-                className="w-full rounded-lg bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-900 shadow-md shadow-sky-900/40 transition hover:bg-sky-400 disabled:opacity-60 md:w-auto"
-                disabled={product.stock === 0}
-              >
-                {product.stock === 0
-                  ? "Out of stock"
-                  : "Proceed to purchase (Demo)"}
-              </button>
+              {product.stock === 0 ? (
+                <button
+                  type="button"
+                  className="w-full rounded-lg bg-slate-700 px-4 py-3 text-sm font-semibold text-slate-300 md:w-auto"
+                  disabled
+                >
+                  Out of stock
+                </button>
+              ) : (
+                <a
+                  href={`/checkout/${product.slug}`}
+                  className="inline-flex w-full items-center justify-center rounded-lg bg-sky-500 px-4 py-3 text-sm font-semibold text-slate-900 shadow-md shadow-sky-900/40 transition hover:bg-sky-400 md:w-auto"
+                >
+                  Proceed to checkout
+                </a>
+              )}
               <p className="mt-2 text-xs text-slate-400">
-                In the MVP demo, this button will not charge you. For AsiaPay /
-                Silkpay integration, this will later redirect to a hosted
-                checkout / payment page.
+                In the MVP demo, this will show a checkout preview. In the live
+                environment, the next step will redirect to a hosted payment page
+                provided by AsiaPay / Silkpay.
               </p>
             </div>
           </div>
