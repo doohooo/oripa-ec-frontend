@@ -45,8 +45,6 @@ export default function CheckoutPage() {
   const params = useParams<{ slug: string }>()
   const slug = params.slug
 
-  const { slug } = React.use(params)
-
   const [quantity, setQuantity] = useState(1)
 
   const product = productData[slug] || {
