@@ -1,113 +1,186 @@
-// src/app/checkout/[slug]/page.tsx
-import { products } from "@/data/products";
-import { notFound } from "next/navigation";
-import { CheckoutPaymentButton } from "@/components/CheckoutPaymentButton";
+"use client"
 
-type PageProps = {
-  params: Promise<{
-    slug: string;
-  }>;
-  searchParams?: Promise<{
-    qty?: string;
-  }>;
-};
+import { useState } from "react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
+import { ArrowLeft, ShoppingBag, Plus, Minus } from "lucide-react"
+import * as React from "react"
+import { useParams } from "next/navigation"
 
-export default async function CheckoutPage({ params, searchParams }: PageProps) {
-  // Next.js 16: params / searchParams は Promise
-  const { slug } = await params;
-  const sp = (await searchParams) ?? {};
+// Mock product data
+const productData: Record<string, any> = {
+  "mystery-pack-premium": {
+    title: "Premium Mystery Pack",
+    price: 29.99,
+    image: "/pokemon-card-pack-red-premium.jpg",
+  },
+}
 
-  const product = products.find((p) => p.slug === slug);
+// Placeholder for the 	CheckoutPaymentButton component
+function CheckoutPaymentButton({ slug, amountUsd, quantity }: { slug: string; amountUsd: number; quantity: number }) {
+  const router = useRouter()
 
-  if (!product) {
-    notFound();
+  const handlePayment = () => {
+    // Simulate payment process
+    router.push("/checkout/success")
   }
 
-  const rawQty = sp.qty ?? "1";
-  const parsed = Number.parseInt(rawQty, 10);
-  const quantity = Number.isNaN(parsed) || parsed <= 0 ? 1 : parsed;
+  return (
+    <Button
+      size="lg"
+      className="h-14 w-full bg-accent text-accent-foreground hover:bg-accent/90 text-lg font-semibold shadow-lg"
+      onClick={handlePayment}
+    >
+      Continue to Payment (Demo)
+    </Button>
+  )
+}
 
-  const subtotal = product.priceUsd * quantity;
+export default function CheckoutPage() {
+  const params = useParams<{ slug: string }>()
+  const slug = params.slug
+
+  const { slug } = React.use(params)
+
+  const [quantity, setQuantity] = useState(1)
+
+  const product = productData[slug] || {
+    title: "Unknown Product",
+    price: 0,
+    image: "/pokemon-card-pack.jpg",
+  }
+
+  const subtotal = product.price * quantity
+  const shipping = 5.99
+  const total = subtotal + shipping
+
+  const handleQuantityChange = (delta: number) => {
+    setQuantity(Math.max(1, quantity + delta))
+  }
 
   return (
-    <main className="min-h-screen bg-slate-950">
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        {/* 戻る */}
-        <div className="mb-4 text-sm">
-          <a
-            href={`/products/${product.slug}`}
-            className="text-sky-400 hover:text-sky-300 hover:underline"
-          >
-            ← Back to product
-          </a>
+    <div className="min-h-screen bg-background">
+      {/* Header */}
+      <header className="border-b bg-card">
+        <div className="container mx-auto flex items-center justify-between px-4 py-4">
+          <Link href="/" className="flex items-center">
+            <img src="/logo.jpg" alt="AKIHABARA TCG SHOP" className="h-40 w-auto" />
+          </Link>
+          <nav className="flex items-center gap-6">
+            <Link href="/products" className="text-sm font-medium hover:text-primary transition-colors">
+              Products
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="container mx-auto px-4 py-8 md:py-12">
+        <div className="mb-8">
+          <Link href={`/products/${slug}`}>
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Product
+            </Button>
+          </Link>
         </div>
 
-        {/* タイトル */}
-        <section className="mb-6 space-y-2">
-          <p className="text-xs font-semibold uppercase tracking-wide text-sky-400">
-            Checkout (Demo)
-          </p>
-          <h1 className="text-2xl font-bold text-slate-50">
-            Order summary
-          </h1>
-          <p className="text-sm text-slate-300">
-            This is a demo checkout page for AsiaPay / Silkpay integration.
-            No real payment will be charged in the MVP phase.
-          </p>
-        </section>
+        <div className="mb-8 text-center">
+          <h1 className="mb-2 text-3xl font-bold md:text-4xl">Checkout</h1>
+          <p className="text-muted-foreground">Complete your order</p>
+        </div>
 
-        {/* 注文サマリー */}
-        <section className="mb-6 rounded-2xl border border-slate-800 bg-slate-900/70 p-4">
-          <div className="flex flex-col gap-3 text-sm text-slate-100">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="font-semibold">{product.name}</p>
-                <p className="text-xs text-slate-400">
-                  Category: {product.category} · Stock: {product.stock}
-                </p>
+        <div className="mx-auto max-w-3xl">
+          <Card className="shadow-lg">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-2xl">
+                <ShoppingBag className="h-6 w-6 text-primary" />
+                Order Summary
+              </CardTitle>
+              <CardDescription>Review your items before payment</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Product Item */}
+              <div className="flex items-center gap-4">
+                <img
+                  src={product.image || "/placeholder.svg"}
+                  alt={product.title}
+                  className="h-20 w-20 rounded-lg object-cover border"
+                />
+                <div className="flex-1">
+                  <h3 className="font-semibold">{product.title}</h3>
+                  <p className="text-sm text-muted-foreground">${product.price} USD</p>
+                </div>
               </div>
-              <div className="text-right text-sky-300">
-                ${product.priceUsd.toFixed(2)}
+
+              <Separator />
+
+              {/* Quantity Selector */}
+              <div className="space-y-2">
+                <Label>Quantity</Label>
+                <div className="flex items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => handleQuantityChange(-1)}
+                    disabled={quantity <= 1}
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <Input
+                    type="number"
+                    value={quantity}
+                    onChange={(e) => setQuantity(Math.max(1, Number.parseInt(e.target.value) || 1))}
+                    className="w-20 text-center"
+                    min="1"
+                  />
+                  <Button variant="outline" size="icon" onClick={() => handleQuantityChange(1)}>
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
 
-            <div className="flex items-center justify-between text-xs text-slate-300">
-              <span>Quantity</span>
-              <span>{quantity}</span>
-            </div>
+              <Separator />
 
-            <div className="mt-2 flex items-center justify-between border-t border-slate-800 pt-3 text-sm font-semibold">
-              <span>Total (USD)</span>
-              <span className="text-sky-300">
-                ${subtotal.toFixed(2)}
-              </span>
-            </div>
+              {/* Price Breakdown */}
+              <div className="space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Subtotal</span>
+                  <span className="font-medium">${subtotal.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-muted-foreground">Shipping</span>
+                  <span className="font-medium">${shipping.toFixed(2)}</span>
+                </div>
+                <Separator />
+                <div className="flex justify-between text-lg font-bold">
+                  <span>Total</span>
+                  <span className="text-primary">${total.toFixed(2)} USD</span>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Payment Button - Keep this component placeholder intact */}
+              <CheckoutPaymentButton slug={slug} amountUsd={subtotal} quantity={quantity} />
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+
+      {/* Footer */}
+      <footer className="border-t bg-card py-8 mt-12">
+        <div className="container mx-auto px-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">© 2025 AKIHABARA TCG SHOP. All rights reserved.</p>
           </div>
-        </section>
-
-        {/* 決済説明 */}
-        <section className="mb-6 space-y-3 text-sm text-slate-200">
-          <h2 className="text-base font-semibold text-slate-50">
-            Next step: payment via AsiaPay / Silkpay
-          </h2>
-          <p className="text-sm text-slate-300">
-            In the live version, clicking the button below will create an order
-            on OripaEC, then redirect you to a secure payment page provided by
-            AsiaPay / Silkpay. Supported methods may include UnionPay, major
-            credit cards, and QR-based payments (depending on the final
-            configuration and region).
-          </p>
-        </section>
-
-        {/* 決済ボタン（デモ・クライアントコンポーネント） */}
-        <section className="space-y-2">
-          <CheckoutPaymentButton
-            slug={product.slug}
-            amountUsd={subtotal}
-            quantity={quantity}
-          />
-        </section>
-      </div>
-    </main>
-  );
+        </div>
+      </footer>
+    </div>
+  )
 }
