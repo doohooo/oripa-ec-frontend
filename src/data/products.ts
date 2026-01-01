@@ -135,3 +135,11 @@ export const products: Product[] = [
     tags: ["bulk", "bundle"],
   },
 ];
+
+export function getProductById(id: string) {
+  return products.find((p) => p.id === id)
+}
+
+export function getProductBySlug(slug: string) {
+  return products.find((p) => p.slug === slug)
+}

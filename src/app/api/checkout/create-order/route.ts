@@ -1,83 +1,76 @@
 // src/app/api/checkout/create-order/route.ts
-import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
+import { NextResponse } from "next/server"
+import { promises as fs } from "fs"
+import path from "path"
 
-// ログを書けるように Node.js ランタイムを明示
-export const runtime = "nodejs";
+// Explicitly use Node.js runtime (required for fs access)
+export const runtime = "nodejs"
 
 type CreateOrderRequest = {
-  slug?: string;
-  quantity?: number;
-  amountUsd?: number;
-};
+  slug?: string
+  quantity?: number
+  amountUsd?: number
+}
 
-// ログ保存用のパス（プロジェクト直下の .data/orders.log）
-const LOG_DIR = path.join(process.cwd(), ".data");
-const LOG_FILE = path.join(LOG_DIR, "orders.log");
+// Log storage paths (project_root/.data/orders.log)
+const LOG_DIR = path.join(process.cwd(), ".data")
+const LOG_FILE = path.join(LOG_DIR, "orders.log")
 
 async function appendOrderLog(entry: unknown) {
   try {
-    // フォルダがなければ作成
-    await fs.mkdir(LOG_DIR, { recursive: true });
-    // 1行ごとに JSON を追記
+    // Ensure log directory exists
+    await fs.mkdir(LOG_DIR, { recursive: true })
+
+    // Append one JSON line per order
     const line =
       JSON.stringify({
-        ...((entry as object) ?? {}),
+        ...(typeof entry === "object" && entry !== null ? entry : {}),
         ts: new Date().toISOString(),
-      }) + "\n";
+      }) + "\n"
 
-    await fs.appendFile(LOG_FILE, line, "utf8");
+    await fs.appendFile(LOG_FILE, line, "utf8")
   } catch (err) {
-    // ログ失敗しても API 自体はエラーにしない
-    console.error("Failed to write order log", err);
+    // Logging failure should not break the API
+    console.error("Failed to write order log", err)
   }
 }
 
 export async function POST(req: Request) {
-  let payload: CreateOrderRequest | null = null;
+  let payload: CreateOrderRequest | null = null
 
   try {
-    payload = await req.json();
+    payload = await req.json()
   } catch {
-    // JSON じゃない場合はそのまま進む（デモなので厳密にしない）
+    // If request body is not valid JSON, continue with defaults
   }
 
-  const slug = payload?.slug ?? "unknown-product";
+  const slug = payload?.slug ?? "unknown-product"
+
   const quantity =
     typeof payload?.quantity === "number" && payload.quantity > 0
       ? payload.quantity
-      : 1;
+      : 1
+
   const amountUsd =
     typeof payload?.amountUsd === "number" && payload.amountUsd > 0
       ? payload.amountUsd
-      : 0;
+      : 0
 
-  // デモ用の疑似オーダーID（固定でOKという方針）
-  const demoOrderId = "demo-order-123";
-
-  // ログに残したい情報をまとめる
-  const logEntry = {
-    orderId: demoOrderId,
+  // Write a simple order log (demo / audit purpose)
+  await appendOrderLog({
     slug,
     quantity,
     amountUsd,
-    ts: new Date().toISOString(),
-  };
+    source: "checkout",
+  })
 
-  // 非同期でログ書き込み（失敗しても API は成功で返す）
-  await appendOrderLog(logEntry);
-
-  return NextResponse.json(
-    {
-      success: true,
-      orderId: demoOrderId,
+  // Demo response (will be replaced by KOMOJU Order API integration)
+  return NextResponse.json({
+    success: true,
+    order: {
       slug,
       quantity,
       amountUsd,
-      message:
-        "Demo order created. In production this endpoint will create an order record and prepare redirect information for AsiaPay / Silkpay.",
     },
-    { status: 200 }
-  );
+  })
 }

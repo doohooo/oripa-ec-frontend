@@ -1,69 +1,26 @@
-"use client"
-
-import { useState } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { notFound } from "next/navigation"
+import { products } from "@/data/products"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
-import { ArrowLeft, ShoppingBag, Plus, Minus } from "lucide-react"
-import * as React from "react"
-import { useParams } from "next/navigation"
+import { Card, CardContent } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { ArrowLeft, Package } from "lucide-react"
 
-// Mock product data
-const productData: Record<string, any> = {
-  "mystery-pack-premium": {
-    title: "Premium Mystery Pack",
-    price: 29.99,
-    image: "/pokemon-card-pack-red-premium.jpg",
-  },
-}
+export default async function CheckoutSlugPage({
+  params,
+}: {
+  params: Promise<{ slug: string }>
+}) {
+  const { slug } = await params
+  const product = products.find((p) => p.slug === slug)
 
-// Placeholder for the 	CheckoutPaymentButton component
-function CheckoutPaymentButton({ slug, amountUsd, quantity }: { slug: string; amountUsd: number; quantity: number }) {
-  const router = useRouter()
+  // If slug is invalid, show 404 (optional)
+  if (!product) return notFound()
 
-  const handlePayment = () => {
-    // Simulate payment process
-    router.push("/checkout/success")
-  }
-
-  return (
-    <Button
-      size="lg"
-      className="h-14 w-full bg-accent text-accent-foreground hover:bg-accent/90 text-lg font-semibold shadow-lg"
-      onClick={handlePayment}
-    >
-      Continue to Payment (Demo)
-    </Button>
-  )
-}
-
-export default function CheckoutPage() {
-  const params = useParams<{ slug: string }>()
-  const slug = params.slug
-
-  const [quantity, setQuantity] = useState(1)
-
-  const product = productData[slug] || {
-    title: "Unknown Product",
-    price: 0,
-    image: "/pokemon-card-pack.jpg",
-  }
-
-  const subtotal = product.price * quantity
-  const shipping = 5.99
-  const total = subtotal + shipping
-
-  const handleQuantityChange = (delta: number) => {
-    setQuantity(Math.max(1, quantity + delta))
-  }
-
+  // We no longer do "single item checkout" on /checkout/[slug].
+  // The cart-based checkout lives at /checkout.
   return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
       <header className="border-b bg-card">
         <div className="container mx-auto flex items-center justify-between px-4 py-4">
           <Link href="/" className="flex items-center">
@@ -73,112 +30,71 @@ export default function CheckoutPage() {
             <Link href="/products" className="text-sm font-medium hover:text-primary transition-colors">
               Products
             </Link>
+            <Link href="/cart" className="text-sm font-medium hover:text-primary transition-colors">
+              Cart
+            </Link>
           </nav>
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="container mx-auto px-4 py-8 md:py-12">
-        <div className="mb-8">
-          <Link href={`/products/${slug}`}>
+        <div className="mb-8 flex items-center justify-between gap-4">
+          <Link href="/products">
             <Button variant="ghost" size="sm">
               <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Product
+              Back to Products
             </Button>
+          </Link>
+
+          <Link href="/checkout">
+            <Button size="sm">Go to Checkout</Button>
           </Link>
         </div>
 
-        <div className="mb-8 text-center">
-          <h1 className="mb-2 text-3xl font-bold md:text-4xl">Checkout</h1>
-          <p className="text-muted-foreground">Complete your order</p>
-        </div>
+        <Card className="max-w-3xl mx-auto">
+          <CardContent className="p-6 md:p-8">
+            <div className="flex flex-col md:flex-row gap-6 items-start">
+              <img
+                src={product.imageUrl}
+                alt={product.name}
+                className="w-full md:w-56 aspect-square rounded-lg object-cover border"
+              />
 
-        <div className="mx-auto max-w-3xl">
-          <Card className="shadow-lg">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2 text-2xl">
-                <ShoppingBag className="h-6 w-6 text-primary" />
-                Order Summary
-              </CardTitle>
-              <CardDescription>Review your items before payment</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Product Item */}
-              <div className="flex items-center gap-4">
-                <img
-                  src={product.image || "/placeholder.svg"}
-                  alt={product.title}
-                  className="h-20 w-20 rounded-lg object-cover border"
-                />
-                <div className="flex-1">
-                  <h3 className="font-semibold">{product.title}</h3>
-                  <p className="text-sm text-muted-foreground">${product.price} USD</p>
+              <div className="flex-1">
+                <Badge className="mb-3 w-fit bg-secondary text-secondary-foreground">
+                  {product.category}
+                </Badge>
+
+                <h1 className="text-2xl md:text-3xl font-bold">{product.name}</h1>
+
+                <div className="mt-3 text-xl font-semibold">${product.priceUsd}</div>
+
+                <div className="mt-4 flex items-center gap-2 text-sm text-muted-foreground">
+                  <Package className="h-4 w-4" />
+                  <span>In stock: {product.stock}</span>
+                </div>
+
+                <p className="mt-5 text-sm text-muted-foreground">
+                  This route is kept for backward compatibility. Checkout is cart-based and lives at{" "}
+                  <Link href="/checkout" className="underline">
+                    /checkout
+                  </Link>
+                  .
+                </p>
+
+                <div className="mt-6 flex gap-3">
+                  <Link href="/cart">
+                    <Button variant="outline">View Cart</Button>
+                  </Link>
+                  <Link href="/checkout">
+                    <Button>Proceed to Checkout</Button>
+                  </Link>
                 </div>
               </div>
-
-              <Separator />
-
-              {/* Quantity Selector */}
-              <div className="space-y-2">
-                <Label>Quantity</Label>
-                <div className="flex items-center gap-3">
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => handleQuantityChange(-1)}
-                    disabled={quantity <= 1}
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <Input
-                    type="number"
-                    value={quantity}
-                    onChange={(e) => setQuantity(Math.max(1, Number.parseInt(e.target.value) || 1))}
-                    className="w-20 text-center"
-                    min="1"
-                  />
-                  <Button variant="outline" size="icon" onClick={() => handleQuantityChange(1)}>
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Price Breakdown */}
-              <div className="space-y-3">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-medium">${subtotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Shipping</span>
-                  <span className="font-medium">${shipping.toFixed(2)}</span>
-                </div>
-                <Separator />
-                <div className="flex justify-between text-lg font-bold">
-                  <span>Total</span>
-                  <span className="text-primary">${total.toFixed(2)} USD</span>
-                </div>
-              </div>
-
-              <Separator />
-
-              {/* Payment Button - Keep this component placeholder intact */}
-              <CheckoutPaymentButton slug={slug} amountUsd={subtotal} quantity={quantity} />
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
       </main>
-
-      {/* Footer */}
-      <footer className="border-t bg-card py-8 mt-12">
-        <div className="container mx-auto px-4">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <p className="text-sm text-muted-foreground">© 2025 AKIHABARA TCG SHOP. All rights reserved.</p>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }
