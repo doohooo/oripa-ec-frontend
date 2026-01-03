@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter, useParams } from "next/navigation"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,24 +15,29 @@ import { ArrowLeft, User, MapPin, FileText, CreditCard, ChevronRight, ShoppingCa
 import { useCart } from "@/hooks/use-cart"
 import { useCheckout, SHIPPING_METHODS } from "@/contexts/checkout-context"
 
-const VALID_SLUGS = ["customer", "shipping", "review", "payment"]
+const VALID_SLUGS = ["customer", "shipping", "review", "payment"] as const
+type StepSlug = (typeof VALID_SLUGS)[number]
 
-const STEPS = [
+const STEPS: { id: StepSlug; label: string; icon: any }[] = [
   { id: "customer", label: "Customer", icon: User },
   { id: "shipping", label: "Shipping", icon: MapPin },
   { id: "review", label: "Review", icon: FileText },
   { id: "payment", label: "Payment", icon: CreditCard },
 ]
 
-export default function CheckoutStepPage({ params }: { params: { slug: string } }) {
+export default function CheckoutStepPage() {
   const router = useRouter()
+  const params = useParams() as { slug?: string | string[] }
+
   const { cart, getCartTotal, clearCart, isLoaded: isCartLoaded } = useCart()
   const { data, updateData, isStepComplete, getFirstIncompleteStep, clearData, getShippingPrice } = useCheckout()
 
   const [isProcessing, setIsProcessing] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-  const slug = params.slug
+  const rawSlug = params?.slug
+  const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug
+  const step = slug && VALID_SLUGS.includes(slug) ? slug : "customer"
 
   useEffect(() => {
     // Wait for cart to hydrate from localStorage
@@ -43,27 +48,24 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
       return
     }
 
-    if (!VALID_SLUGS.includes(slug)) {
-      router.replace("/checkout/customer")
-      return
-    }
-
     const firstIncomplete = getFirstIncompleteStep()
     if (slug !== firstIncomplete && !isStepComplete(slug)) {
       router.replace(`/checkout/${firstIncomplete}`)
     }
-  }, [slug, cart, router, getFirstIncompleteStep, isStepComplete, isCartLoaded])
+  }, [slug, cart.length, router, getFirstIncompleteStep, isStepComplete, isCartLoaded])
 
   if (!isCartLoaded || !cart.length) {
     return null
   }
 
   const currentStepIndex = STEPS.findIndex((s) => s.id === slug)
+  if (currentStepIndex < 0) return null
+
   const subtotal = getCartTotal()
   const shipping = getShippingPrice()
   const total = subtotal + shipping
 
-  const validateCustomer = (): boolean => {
+  const validateCustomer = (): { ok: boolean; firstErrorKey?: string } => {
     const newErrors: Record<string, string> = {}
 
     if (!data.fullName) newErrors.fullName = "Full name is required"
@@ -73,10 +75,11 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
     else if (!data.email.includes("@") || !data.email.includes(".")) newErrors.email = "Enter a valid email"
 
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    const keys = Object.keys(newErrors)
+    return { ok: keys.length === 0, firstErrorKey: keys[0] }
   }
 
-  const validateShipping = (): boolean => {
+  const validateShipping = (): { ok: boolean; firstErrorKey?: string } => {
     const newErrors: Record<string, string> = {}
 
     if (!data.country) newErrors.country = "Country is required"
@@ -96,33 +99,34 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
     if (!data.shippingMethod) newErrors.shippingMethod = "Please select a shipping method"
 
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    const keys = Object.keys(newErrors)
+    return { ok: keys.length === 0, firstErrorKey: keys[0] }
   }
 
-  const validatePayment = (): boolean => {
+  const validatePayment = (): { ok: boolean; firstErrorKey?: string } => {
     const newErrors: Record<string, string> = {}
     if (!data.acceptedTerms) newErrors.acceptedTerms = "You must accept the terms to continue"
     setErrors(newErrors)
-    return Object.keys(newErrors).length === 0
+    const keys = Object.keys(newErrors)
+    return { ok: keys.length === 0, firstErrorKey: keys[0] }
   }
 
   const handleContinue = () => {
-    let isValid = true
+    let result: { ok: boolean; firstErrorKey?: string } = { ok: true }
 
     if (slug === "customer") {
-      isValid = validateCustomer()
+      result = validateCustomer()
     } else if (slug === "shipping") {
-      isValid = validateShipping()
+      result = validateShipping()
     } else if (slug === "review") {
-      isValid = true
+      result = { ok: true }
     }
 
-    if (!isValid) {
-      // Scroll to first error if validation failed
-      const firstErrorKey = Object.keys(errors)[0]
-      if (firstErrorKey) {
-        const element = document.getElementById(firstErrorKey)
-        element?.scrollIntoView({ behavior: "smooth", block: "center" })
+    if (!result.ok) {
+      const firstKey = result.firstErrorKey
+      if (firstKey) {
+        const el = document.getElementById(firstKey)
+        el?.scrollIntoView({ behavior: "smooth", block: "center" })
       }
       return
     }
@@ -131,7 +135,7 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
     if (nextIndex < STEPS.length) {
       router.push(`/checkout/${STEPS[nextIndex].id}`)
     } else {
-      handlePlaceOrder()
+      void handlePlaceOrder()
     }
   }
 
@@ -145,7 +149,15 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
   }
 
   const handlePlaceOrder = async () => {
-    if (!validatePayment()) return
+    const result = validatePayment()
+    if (!result.ok) {
+      const firstKey = result.firstErrorKey
+      if (firstKey) {
+        const el = document.getElementById(firstKey)
+        el?.scrollIntoView({ behavior: "smooth", block: "center" })
+      }
+      return
+    }
 
     setIsProcessing(true)
     await new Promise((resolve) => setTimeout(resolve, 2000))
@@ -196,9 +208,7 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
                   </p>
                 </div>
                 {index < STEPS.length - 1 && (
-                  <ChevronRight
-                    className={`mx-2 h-5 w-5 ${isCompleted ? "text-primary" : "text-muted-foreground/30"}`}
-                  />
+                  <ChevronRight className={`mx-2 h-5 w-5 ${isCompleted ? "text-primary" : "text-muted-foreground/30"}`} />
                 )}
               </div>
             )
@@ -227,7 +237,7 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
                       value={data.fullName}
                       onChange={(e) => {
                         updateData({ fullName: e.target.value })
-                        if (errors.fullName) setErrors({ ...errors, fullName: "" })
+                        if (errors.fullName) setErrors((prev: any) => ({ ...prev, fullName: "" }))
                       }}
                       placeholder="John Doe"
                       className={errors.fullName ? "border-destructive" : ""}
@@ -248,7 +258,7 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
                       value={data.email}
                       onChange={(e) => {
                         updateData({ email: e.target.value })
-                        if (errors.email) setErrors({ ...errors, email: "" })
+                        if (errors.email) setErrors((prev: any) => ({ ...prev, email: "" }))
                       }}
                       placeholder="your@email.com"
                       className={errors.email ? "border-destructive" : ""}
@@ -259,9 +269,7 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
                         {errors.email}
                       </p>
                     )}
-                    <p className="text-xs text-muted-foreground">
-                      We'll send your order confirmation and updates to this email.
-                    </p>
+                    <p className="text-xs text-muted-foreground">We'll send your order confirmation and updates to this email.</p>
                   </div>
 
                   <div className="space-y-2">
@@ -270,9 +278,7 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
                       id="phone"
                       type="tel"
                       value={data.phone}
-                      onChange={(e) => {
-                        updateData({ phone: e.target.value })
-                      }}
+                      onChange={(e) => updateData({ phone: e.target.value })}
                       placeholder="+1 (555) 123-4567"
                     />
                     <p className="text-xs text-muted-foreground">For delivery updates and support (optional).</p>
@@ -395,18 +401,12 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
 
                   <Separator />
 
-                  <div>
+                  <div id="shippingMethod">
                     <h3 className="mb-4 text-lg font-semibold">Shipping Method</h3>
                     <Label className="mb-3 block">Select Shipping Method *</Label>
-                    <RadioGroup
-                      value={data.shippingMethod}
-                      onValueChange={(val) => updateData({ shippingMethod: val })}
-                    >
+                    <RadioGroup value={data.shippingMethod} onValueChange={(val) => updateData({ shippingMethod: val })}>
                       {SHIPPING_METHODS.map((method) => (
-                        <Card
-                          key={method.id}
-                          className={`cursor-pointer ${data.shippingMethod === method.id ? "border-primary" : ""}`}
-                        >
+                        <Card key={method.id} className={`cursor-pointer ${data.shippingMethod === method.id ? "border-primary" : ""}`}>
                           <CardContent className="flex items-center justify-between p-4">
                             <div className="flex items-center gap-3">
                               <RadioGroupItem value={method.id} id={method.id} />
@@ -517,8 +517,7 @@ export default function CheckoutStepPage({ params }: { params: { slug: string } 
                     <Card className="bg-muted/50">
                       <CardContent className="p-6 space-y-4">
                         <p className="text-sm text-muted-foreground mb-4">
-                          Enter your card details below. Payment processing will be integrated with Stripe in
-                          production.
+                          Enter your card details below. Payment processing will be integrated with Stripe in production.
                         </p>
 
                         <div className="space-y-2">
