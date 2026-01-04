@@ -14,9 +14,13 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { ArrowLeft, User, MapPin, FileText, CreditCard, ChevronRight, ShoppingCart, AlertCircle } from "lucide-react"
 import { useCart } from "@/hooks/use-cart"
 import { useCheckout, SHIPPING_METHODS } from "@/contexts/checkout-context"
+import { loadStripe } from "@stripe/stripe-js"
+import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js"
 
 const VALID_SLUGS = ["customer", "shipping", "review", "payment"] as const
 type StepSlug = (typeof VALID_SLUGS)[number]
+
+const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
 const STEPS: { id: StepSlug; label: string; icon: any }[] = [
   { id: "customer", label: "Customer", icon: User },
@@ -24,6 +28,118 @@ const STEPS: { id: StepSlug; label: string; icon: any }[] = [
   { id: "review", label: "Review", icon: FileText },
   { id: "payment", label: "Payment", icon: CreditCard },
 ]
+
+const FREE_SHIPPING_THRESHOLD = 100
+const FREE_SHIPPING_METHOD = "standard"
+
+function StripePaymentForm({
+  amountCents,
+  onSuccess,
+  acceptedTerms,
+}: {
+  amountCents: number
+  onSuccess: () => void
+  acceptedTerms: boolean
+}) {
+  const stripe = useStripe()
+  const elements = useElements()
+  const [isPaying, setIsPaying] = useState(false)
+  const [error, setError] = useState<string>("")
+
+  const handlePay = async () => {
+    setError("")
+    if (!stripe || !elements) return
+    if (!acceptedTerms) {
+      setError("Please accept the terms to continue.")
+      return
+    }
+
+    setIsPaying(true)
+    try {
+      // confirmPayment は3DS等でも“サイト内”で完結（iframe/modal）します
+      const { error } = await stripe.confirmPayment({
+        elements,
+        confirmParams: {
+          // 何かあった時の戻り先（基本は戻らないが保険）
+          return_url: `${window.location.origin}/checkout/success`,
+        },
+        redirect: "if_required",
+      })
+
+      if (error) {
+        setError(error.message || "Payment failed")
+        setIsPaying(false)
+        return
+      }
+
+      onSuccess()
+    } catch (e: any) {
+      setError(e?.message || "Payment failed")
+      setIsPaying(false)
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <PaymentElement />
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      <Button onClick={handlePay} disabled={!stripe || isPaying} className="w-full">
+        {isPaying ? "Processing..." : `Pay $${(amountCents / 100).toFixed(2)}`}
+      </Button>
+    </div>
+  )
+}
+
+function StripeElementsWrapper({
+  amountCents,
+  onPaid,
+  acceptedTerms,
+}: {
+  amountCents: number
+  onPaid: () => void
+  acceptedTerms: boolean
+}) {
+  const [clientSecret, setClientSecret] = useState<string>("")
+  const [error, setError] = useState<string>("")
+
+  useEffect(() => {
+    let cancelled = false
+    setError("")
+    setClientSecret("")
+
+    ;(async () => {
+      try {
+        const res = await fetch("/api/stripe/create-payment-intent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            amount: amountCents,
+            currency: "usd",
+            metadata: { source: "checkout" },
+          }),
+        })
+        const json = await res.json()
+        if (!res.ok) throw new Error(json?.error || "Failed to init payment")
+        if (!cancelled) setClientSecret(json.clientSecret)
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || "Failed to init payment")
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [amountCents])
+
+  if (error) return <p className="text-sm text-destructive">{error}</p>
+  if (!clientSecret) return <p className="text-sm text-muted-foreground">Loading payment form...</p>
+
+  return (
+    <Elements stripe={stripePromise} options={{ clientSecret }}>
+      <StripePaymentForm amountCents={amountCents} onSuccess={onPaid} acceptedTerms={acceptedTerms} />
+    </Elements>
+  )
+}
 
 export default function CheckoutStepPage() {
   const router = useRouter()
@@ -62,8 +178,16 @@ export default function CheckoutStepPage() {
   if (currentStepIndex < 0) return null
 
   const subtotal = getCartTotal()
-  const shipping = getShippingPrice()
+  const rawShipping = getShippingPrice()
+
+  const isFreeShipping =
+    subtotal >= FREE_SHIPPING_THRESHOLD &&
+    data.shippingMethod === FREE_SHIPPING_METHOD
+
+  const shipping = isFreeShipping ? 0 : rawShipping
   const total = subtotal + shipping
+
+  const amountCents = Math.round(total * 100)
 
   const validateCustomer = (): { ok: boolean; firstErrorKey?: string } => {
     const newErrors: Record<string, string> = {}
@@ -415,6 +539,13 @@ export default function CheckoutStepPage() {
                                   {method.name}
                                 </Label>
                                 <p className="text-sm text-muted-foreground">{method.eta}</p>
+
+                                {method.id === FREE_SHIPPING_METHOD &&
+                                  subtotal < FREE_SHIPPING_THRESHOLD && (
+                                    <p className="text-xs text-muted-foreground">
+                                      Free over ${FREE_SHIPPING_THRESHOLD}
+                                    </p>
+                                )}
                               </div>
                             </div>
                             <p className="font-semibold">${method.price.toFixed(2)}</p>
@@ -517,24 +648,18 @@ export default function CheckoutStepPage() {
                     <Card className="bg-muted/50">
                       <CardContent className="p-6 space-y-4">
                         <p className="text-sm text-muted-foreground mb-4">
-                          Enter your card details below. Payment processing will be integrated with Stripe in production.
+                          Pay securely with Stripe (card details are never stored on our server).
                         </p>
 
-                        <div className="space-y-2">
-                          <Label htmlFor="cardNumber">Card Number *</Label>
-                          <Input id="cardNumber" placeholder="1234 5678 9012 3456" />
-                        </div>
-
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div className="space-y-2">
-                            <Label htmlFor="expiry">Expiry Date *</Label>
-                            <Input id="expiry" placeholder="MM/YY" />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="cvc">CVC *</Label>
-                            <Input id="cvc" placeholder="123" />
-                          </div>
-                        </div>
+                        <StripeElementsWrapper
+                          amountCents={amountCents}
+                          acceptedTerms={data.acceptedTerms}
+                          onPaid={() => {
+                            clearCart()
+                            clearData()
+                            router.push("/checkout/success")
+                          }}
+                        />
                       </CardContent>
                     </Card>
                   </div>
@@ -575,22 +700,21 @@ export default function CheckoutStepPage() {
                 <Button variant="outline" onClick={handleBack} disabled={isProcessing}>
                   Back
                 </Button>
-                {slug === "payment" ? (
-                  <Button onClick={handlePlaceOrder} disabled={isProcessing || !data.acceptedTerms} className="flex-1">
-                    {isProcessing ? "Processing Payment..." : `Pay $${total.toFixed(2)}`}
-                  </Button>
-                ) : slug === "review" ? (
-                  <Button onClick={handleContinue} className="flex-1">
-                    Proceed to Payment
-                  </Button>
-                ) : (
-                  <Button
-                    onClick={handleContinue}
-                    className="flex-1"
-                    disabled={slug === "customer" && (!data.fullName || !data.email || !data.email.includes("@"))}
-                  >
-                    Continue
-                  </Button>
+
+                {slug !== "payment" && (
+                  slug === "review" ? (
+                    <Button onClick={handleContinue} className="flex-1">
+                        Proceed to Payment
+                    </Button>
+                  ) : (
+                    <Button
+                      onClick={handleContinue}
+                      className="flex-1"
+                      disabled={slug === "customer" && (!data.fullName || !data.email || !data.email.includes("@"))}
+                    >
+                      Continue
+                    </Button>
+                  )
                 )}
               </div>
             </CardContent>
@@ -633,7 +757,13 @@ export default function CheckoutStepPage() {
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="text-muted-foreground">Shipping</span>
-                  <span className="font-medium">${shipping.toFixed(2)}</span>
+                  <span className="font-medium">
+                    {isFreeShipping ? (
+                      <span className="text-green-600 font-bold">Free</span>
+                    ) : (
+                      `$${shipping.toFixed(2)}`
+                    )}
+                  </span>
                 </div>
                 <Separator />
                 <div className="flex justify-between text-lg font-bold">

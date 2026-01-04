@@ -26,6 +26,10 @@ export default function CartPage() {
   const subtotal = getCartTotal()
   const cartCount = getCartCount()
 
+  const freeShippingEligible = subtotal >= FREE_SHIPPING_THRESHOLD
+  const remainingForFreeShipping = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
+  const remainingText = remainingForFreeShipping.toFixed(2)
+
   return (
     <main className="container mx-auto px-4 py-8 md:py-12">
       <div className="mb-8">
@@ -150,8 +154,8 @@ export default function CartPage() {
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground">
-                      🚚 Spend ${(FREE_SHIPPING_THRESHOLD - subtotal).toFixed(2)} more to get
-                     <span className="font-medium"> Free Standard Shipping</span>
+                      🚚 Spend ${remainingText} more to get
+                      <span className="font-medium"> Free Standard Shipping</span>
                     </p>
                   )}
 
