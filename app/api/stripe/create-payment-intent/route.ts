@@ -1,5 +1,8 @@
 import Stripe from "stripe"
 import { NextResponse } from "next/server"
+import { createOrder, attachPaymentIntent } from "@/lib/orders"
+
+export const runtime = "nodejs"
 
 export async function POST(req: Request) {
   try {
@@ -8,28 +11,34 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "STRIPE_SECRET_KEY is not set" }, { status: 500 })
     }
 
-    // ✅ ここで初期化（ビルド時に new Stripe されない）
-    const stripe = new Stripe(secretKey, {
-      apiVersion: "2024-06-20",
-    })
+    const stripe = new Stripe(secretKey, { apiVersion: "2024-06-20" })
 
     const body = await req.json()
     const amount = Number(body?.amount) // cents
     const currency = (body?.currency || "usd") as Stripe.PaymentIntentCreateParams.Currency
-    const metadata = (body?.metadata || {}) as Record<string, string>
 
     if (!amount || Number.isNaN(amount) || amount < 50) {
       return NextResponse.json({ error: "Invalid amount" }, { status: 400 })
     }
 
+    // 1) DBに注文作成
+    const order = createOrder({ amount, currency })
+
+    // 2) PaymentIntent作成（order_noをmetadataに入れる）
     const intent = await stripe.paymentIntents.create({
       amount,
       currency,
       automatic_payment_methods: { enabled: true },
-      metadata,
+      metadata: { order_no: order.order_no },
     })
 
-    return NextResponse.json({ clientSecret: intent.client_secret })
+    // 3) PaymentIntent id を orders に紐付け（status pending）
+    attachPaymentIntent(order.order_no, intent.id)
+
+    return NextResponse.json({
+      clientSecret: intent.client_secret,
+      orderNo: order.order_no,
+    })
   } catch (e: any) {
     return NextResponse.json(
       { error: e?.message || "Failed to create payment intent" },

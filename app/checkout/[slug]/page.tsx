@@ -36,10 +36,12 @@ function StripePaymentForm({
   amountCents,
   onSuccess,
   acceptedTerms,
+  orderNo,
 }: {
   amountCents: number
   onSuccess: () => void
   acceptedTerms: boolean
+  orderNo: string
 }) {
   const stripe = useStripe()
   const elements = useElements()
@@ -53,17 +55,18 @@ function StripePaymentForm({
       setError("Please accept the terms to continue.")
       return
     }
+    if (!orderNo) {
+      setError("Order is not ready yet. Please wait a moment and try again.")
+      return
+    }
 
     setIsPaying(true)
     try {
-      // confirmPayment は3DS等でも“サイト内”で完結（iframe/modal）します
       const { error } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          // 何かあった時の戻り先（基本は戻らないが保険）
-          return_url: `${window.location.origin}/checkout/success`,
+          return_url: `${window.location.origin}/checkout/success?order_no=${encodeURIComponent(orderNo)}`,
         },
-        redirect: "if_required",
       })
 
       if (error) {
@@ -83,7 +86,7 @@ function StripePaymentForm({
     <div className="space-y-4">
       <PaymentElement />
       {error && <p className="text-sm text-destructive">{error}</p>}
-      <Button onClick={handlePay} disabled={!stripe || isPaying} className="w-full">
+      <Button onClick={handlePay} disabled={!stripe || isPaying || !orderNo} className="w-full">
         {isPaying ? "Processing..." : `Pay $${(amountCents / 100).toFixed(2)}`}
       </Button>
     </div>
@@ -94,10 +97,14 @@ function StripeElementsWrapper({
   amountCents,
   onPaid,
   acceptedTerms,
+  orderNo,
+  setOrderNo,
 }: {
   amountCents: number
   onPaid: () => void
   acceptedTerms: boolean
+  orderNo: string
+  setOrderNo: (v: string) => void
 }) {
   const [clientSecret, setClientSecret] = useState<string>("")
   const [error, setError] = useState<string>("")
@@ -115,12 +122,16 @@ function StripeElementsWrapper({
           body: JSON.stringify({
             amount: amountCents,
             currency: "usd",
-            metadata: { source: "checkout" },
           }),
         })
+
         const json = await res.json()
         if (!res.ok) throw new Error(json?.error || "Failed to init payment")
-        if (!cancelled) setClientSecret(json.clientSecret)
+
+        if (!cancelled) {
+          setClientSecret(json.clientSecret)
+          setOrderNo(json.orderNo)
+        }
       } catch (e: any) {
         if (!cancelled) setError(e?.message || "Failed to init payment")
       }
@@ -129,14 +140,19 @@ function StripeElementsWrapper({
     return () => {
       cancelled = true
     }
-  }, [amountCents])
+  }, [amountCents, setOrderNo])
 
   if (error) return <p className="text-sm text-destructive">{error}</p>
   if (!clientSecret) return <p className="text-sm text-muted-foreground">Loading payment form...</p>
 
   return (
     <Elements stripe={stripePromise} options={{ clientSecret }}>
-      <StripePaymentForm amountCents={amountCents} onSuccess={onPaid} acceptedTerms={acceptedTerms} />
+      <StripePaymentForm
+        amountCents={amountCents}
+        onSuccess={onPaid}
+        acceptedTerms={acceptedTerms}
+        orderNo={orderNo}
+      />
     </Elements>
   )
 }
@@ -150,6 +166,7 @@ export default function CheckoutStepPage() {
 
   const [isProcessing, setIsProcessing] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
+  const [orderNo, setOrderNo] = useState<string>("")
 
   const rawSlug = params?.slug
   const slug = Array.isArray(rawSlug) ? rawSlug[0] : rawSlug
@@ -654,6 +671,8 @@ export default function CheckoutStepPage() {
                         <StripeElementsWrapper
                           amountCents={amountCents}
                           acceptedTerms={data.acceptedTerms}
+                          orderNo={orderNo}
+                          setOrderNo={setOrderNo}
                           onPaid={() => {
                             clearCart()
                             clearData()
