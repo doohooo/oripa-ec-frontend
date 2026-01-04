@@ -9,6 +9,9 @@ import { ShoppingCart, Trash2, Plus, Minus, ShoppingBag } from "lucide-react"
 import { useCart } from "@/hooks/use-cart"
 import { Input } from "@/components/ui/input"
 
+const FREE_SHIPPING_THRESHOLD = 100
+const FREE_SHIPPING_METHOD_LABEL = "Standard shipping"
+
 export default function CartPage() {
   const { cart, isLoaded, removeFromCart, updateQuantity, getCartTotal, getCartCount } = useCart()
 
@@ -140,6 +143,18 @@ export default function CartPage() {
                     <span className="text-muted-foreground">Subtotal</span>
                     <span className="font-medium">${subtotal.toFixed(2)}</span>
                   </div>
+
+                  {freeShippingEligible ? (
+                    <p className="text-sm font-semibold text-green-600">
+                      🎉 Free Standard Shipping applied (orders over $100)
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground">
+                      🚚 Spend ${(FREE_SHIPPING_THRESHOLD - subtotal).toFixed(2)} more to get
+                     <span className="font-medium"> Free Standard Shipping</span>
+                    </p>
+                  )}
+
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Shipping</span>
                     <span className="text-muted-foreground">Calculated at checkout</span>
